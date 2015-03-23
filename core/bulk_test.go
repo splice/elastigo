@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -171,34 +172,23 @@ func TestBulkSmallBatch(t *testing.T) {
 
 }
 
-func XXXTestBulkErrors(t *testing.T) {
-	// lets set a bad port, and hope we get a connection refused error?
-	api.Port = "27845"
-	defer func() {
-		api.Port = "9200"
-	}()
+func TestBulkErrors(t *testing.T) {
 	BulkDelaySeconds = 1
-	indexer := NewBulkIndexerErrors(10, 1)
+	indexer := NewBulkIndexerRetry(10, 1)
+	indexer.BulkSender = func(_ *bytes.Buffer) error {
+		return errors.New("FAIL")
+	}
 	done := make(chan bool)
-	indexer.Run(done)
-	errorCt := 0
-	go func() {
-		for i := 0; i < 20; i++ {
-			date := time.Unix(1257894000, 0)
-			data := map[string]interface{}{"name": "smurfs", "age": 22, "date": time.Unix(1257894000, 0)}
-			indexer.Index("users", "user", strconv.Itoa(i), "", &date, data, true)
-		}
-	}()
-	var errBuf *ErrorBuffer
-	for errBuf = range indexer.ErrorChannel {
-		errorCt++
-		break
+	errCh := indexer.Run(done)
+	for i := 0; i < 20; i++ {
+		date := time.Unix(1257894000, 0)
+		data := map[string]interface{}{"name": "smurfs", "age": 22, "date": time.Unix(1257894000, 0)}
+		indexer.Index("users", "user", strconv.Itoa(i), "", &date, data, true)
 	}
-	if errBuf.Buf.Len() > 0 {
-		gou.Debug(errBuf.Err)
-	}
-	assert.T(t, errorCt > 0, fmt.Sprintf("ErrorCt should be > 0 %d", errorCt))
 	done <- true
+	err := <-errCh
+	assert.NotEqual(t, nil, err, fmt.Sprintf("error should not be nil"))
+	assert.Equal(t, "FAIL", err.Error(), "error should be the expected one")
 }
 
 /*
