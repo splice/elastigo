@@ -187,8 +187,8 @@ func TestBulkErrors(t *testing.T) {
 	}
 	done <- true
 	err := <-errCh
-	t.Logf("Error is: %#v", err)
 	assert.NotEqual(t, nil, err, fmt.Sprintf("error should not be nil"))
+	assert.Equal(t, "FAIL", err.Error(), "error should be the expected one")
 }
 
 /*
