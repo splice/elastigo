@@ -46,6 +46,42 @@ type ErrorBuffer struct {
 	Buf *bytes.Buffer
 }
 
+type syncErrorList struct {
+	m    sync.Mutex
+	errs []error
+}
+
+func (e *syncErrorList) add(err error) {
+	e.m.Lock()
+	e.errs = append(e.errs, err)
+	e.m.Unlock()
+}
+
+func (e *syncErrorList) err() error {
+	e.m.Lock()
+	defer e.m.Unlock()
+
+	if len(e.errs) == 0 {
+		return nil
+	}
+	return e
+}
+
+func (e *syncErrorList) Error() string {
+	var buf bytes.Buffer
+
+	e.m.Lock()
+	defer e.m.Unlock()
+
+	for i, err := range e.errs {
+		if i > 0 {
+			buf.WriteString("\n")
+		}
+		buf.WriteString(err.Error())
+	}
+	return buf.String()
+}
+
 // There is one global bulk indexer available for convenience so the IndexBulk() function can be called.
 // However, the recommended usage is create your own BulkIndexer to allow for multiple seperate elasticsearch
 // servers/host connections.
@@ -76,8 +112,8 @@ type BulkIndexer struct {
 	// if 0 it will not retry
 	RetryForSeconds int
 
-	// channel for getting errors
-	ErrorChannel chan *ErrorBuffer
+	// list of errors cumulated during the bulk action
+	errs *syncErrorList
 
 	// channel for sending to background indexer
 	bulkChannel chan []byte
@@ -132,25 +168,25 @@ func NewBulkIndexer(maxConns int) *BulkIndexer {
 	b.timerDoneChan = make(chan bool)
 	b.httpDoneChan = make(chan bool)
 	b.gorosWg = new(sync.WaitGroup)
+	b.errs = &syncErrorList{}
 	return &b
 }
 
 // A bulk indexer with more control over error handling
 //    @maxConns is the max number of in flight http requests
 //    @retrySeconds is # of seconds to wait before retrying falied requests
-//
-//   done := make(chan bool)
-//   BulkIndexerGlobalRun(100, done)
-func NewBulkIndexerErrors(maxConns, retrySeconds int) *BulkIndexer {
+func NewBulkIndexerRetry(maxConns, retrySeconds int) *BulkIndexer {
 	b := NewBulkIndexer(maxConns)
 	b.RetryForSeconds = retrySeconds
-	b.ErrorChannel = make(chan *ErrorBuffer, 20)
 	return b
 }
 
 // Starts this bulk Indexer running, this Run opens a go routine so is
 // Non blocking
-func (b *BulkIndexer) Run(done chan bool) {
+func (b *BulkIndexer) Run(done chan bool) <-chan error {
+	// buffer of 1 to make sure the send never blocks (if the caller does not
+	// wait for receive).
+	errCh := make(chan error, 1)
 
 	go func() {
 		if b.BulkSender == nil {
@@ -165,7 +201,14 @@ func (b *BulkIndexer) Run(done chan bool) {
 		<-b.shutdownChan
 		b.Flush()
 		b.shutdown()
+
+		// shutdown doesn't return until all goroutines are done, so it's now
+		// safe to return the error, and receiving on the error channel makes
+		// sure that the caller is synchronized with the end of the bulk action.
+		errCh <- b.errs.err()
 	}()
+
+	return errCh
 }
 
 // Make a channel that will close when the given WaitGroup is done.
@@ -232,9 +275,7 @@ func (b *BulkIndexer) startHttpSender() {
 								continue
 							}
 						}
-						if b.ErrorChannel != nil {
-							b.ErrorChannel <- &ErrorBuffer{err, buf}
-						}
+						b.errs.add(err)
 					}
 					b.sendWg.Done()
 				case <-b.httpDoneChan:

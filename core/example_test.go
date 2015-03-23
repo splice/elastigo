@@ -23,7 +23,7 @@ import (
 
 // The simplest usage of background bulk indexing
 func ExampleBulkIndexer_simple() {
-	indexer := core.NewBulkIndexerErrors(10, 60)
+	indexer := core.NewBulkIndexerRetry(10, 60)
 	done := make(chan bool)
 	indexer.Run(done)
 
@@ -34,27 +34,23 @@ func ExampleBulkIndexer_simple() {
 
 // The simplest usage of background bulk indexing with error channel
 func ExampleBulkIndexer_errorchannel() {
-	indexer := core.NewBulkIndexerErrors(10, 60)
+	indexer := core.NewBulkIndexerRetry(10, 60)
 	done := make(chan bool)
-	indexer.Run(done)
+	errCh := indexer.Run(done)
 
-	go func() {
-		for errBuf := range indexer.ErrorChannel {
-			// just blissfully print errors forever
-			fmt.Println(errBuf.Err)
-		}
-	}()
 	for i := 0; i < 20; i++ {
 		indexer.Index("twitter", "user", strconv.Itoa(i), "", nil, `{"name":"bob"}`, true)
 	}
 	done <- true
+	err := <-errCh
+	fmt.Println(err)
 }
 
 // The simplest usage of background bulk indexing with error channel
 func ExampleBulkIndexer_errorsmarter() {
-	indexer := core.NewBulkIndexerErrors(10, 60)
+	indexer := core.NewBulkIndexerRetry(10, 60)
 	done := make(chan bool)
-	indexer.Run(done)
+	errCh := indexer.Run(done)
 
 	errorCt := 0 // use sync.atomic or something if you need
 	timer := time.NewTicker(time.Minute * 3)
@@ -71,17 +67,12 @@ func ExampleBulkIndexer_errorsmarter() {
 		}
 	}()
 
-	go func() {
-		for errBuf := range indexer.ErrorChannel {
-			errorCt++
-			fmt.Println(errBuf.Err)
-			// log to disk?  db?   ????  Panic
-		}
-	}()
 	for i := 0; i < 20; i++ {
 		indexer.Index("twitter", "user", strconv.Itoa(i), "", nil, `{"name":"bob"}`, true)
 	}
 	done <- true // send shutdown signal
+	err := <-errCh
+	fmt.Println(err)
 }
 
 // The inspecting the response
