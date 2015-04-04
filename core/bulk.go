@@ -361,9 +361,9 @@ func (b *BulkIndexer) Index(index string, _type string, id, ttl string, date *ti
 	return nil
 }
 
-func (b *BulkIndexer) Delete(index string, _type string, id, ttl string, date *time.Time, data interface{}, refresh bool) error {
+func (b *BulkIndexer) Delete(index string, _type string, id, ttl string, date *time.Time, _ interface{}, refresh bool) error {
 	//{ "index" : { "_index" : "test", "_type" : "type1", "_id" : "1" } }
-	by, err := WriteBulkBytes("delete", index, _type, id, ttl, date, data, refresh)
+	by, err := WriteBulkBytes("delete", index, _type, id, ttl, date, nil, refresh)
 	if err != nil {
 		return err
 	}
@@ -396,7 +396,7 @@ func BulkSend(buf *bytes.Buffer) error {
 // http://www.elasticsearch.org/guide/reference/api/bulk.html
 func WriteBulkBytes(op string, index string, _type string, id, ttl string, date *time.Time, data interface{}, refresh bool) ([]byte, error) {
 	// only index and update are currently supported
-	if op != "index" && op != "update" {
+	if op != "index" && op != "update" && op != "delete" {
 		return nil, errors.New(fmt.Sprintf("Operation '%s' is not yet supported", op))
 	}
 
@@ -432,22 +432,24 @@ func WriteBulkBytes(op string, index string, _type string, id, ttl string, date 
 	}
 	buf.WriteString(`}}`)
 	buf.WriteRune('\n')
-	//buf.WriteByte('\n')
-	switch v := data.(type) {
-	case *bytes.Buffer:
-		io.Copy(&buf, v)
-	case []byte:
-		buf.Write(v)
-	case string:
-		buf.WriteString(v)
-	default:
-		body, jsonErr := json.Marshal(data)
-		if jsonErr != nil {
-			return nil, jsonErr
+	if data != nil {
+		//buf.WriteByte('\n')
+		switch v := data.(type) {
+		case *bytes.Buffer:
+			io.Copy(&buf, v)
+		case []byte:
+			buf.Write(v)
+		case string:
+			buf.WriteString(v)
+		default:
+			body, jsonErr := json.Marshal(data)
+			if jsonErr != nil {
+				return nil, jsonErr
+			}
+			buf.Write(body)
 		}
-		buf.Write(body)
+		buf.WriteRune('\n')
 	}
-	buf.WriteRune('\n')
 	return buf.Bytes(), nil
 }
 

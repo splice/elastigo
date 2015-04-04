@@ -253,3 +253,39 @@ func BenchmarkBulkSendBytes(b *testing.B) {
 		b.Fail()
 	}
 }
+
+// sanity test more than anything else
+func TestWriteBulkBytes(t *testing.T) {
+	hello := map[string]string{"hello": "world"}
+
+	testCases := []struct {
+		op       string
+		doc      interface{}
+		expected string
+	}{
+		{
+			op:       "index",
+			doc:      hello,
+			expected: "{\"index\":{\"_index\":\"conversations\",\"_type\":\"greetings\",\"_id\":\"1\"}}\n{\"hello\":\"world\"}\n",
+		},
+		{
+			op:       "update",
+			doc:      hello,
+			expected: "{\"update\":{\"_index\":\"conversations\",\"_type\":\"greetings\",\"_id\":\"1\",\"retry_on_conflict\":3}}\n{\"hello\":\"world\"}\n",
+		},
+		{
+			op:       "delete",
+			doc:      nil,
+			expected: "{\"delete\":{\"_index\":\"conversations\",\"_type\":\"greetings\",\"_id\":\"1\"}}\n",
+		},
+	}
+	for _, tc := range testCases {
+		by, err := WriteBulkBytes(tc.op, "conversations", "greetings", "1", "", nil, tc.doc, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(by) != tc.expected {
+			t.Errorf("Got:\n`%s`\nWant:\n`%s`\n", string(by), tc.expected)
+		}
+	}
+}
