@@ -361,6 +361,16 @@ func (b *BulkIndexer) Index(index string, _type string, id, ttl string, date *ti
 	return nil
 }
 
+func (b *BulkIndexer) Delete(index string, _type string, id, ttl string, date *time.Time, data interface{}, refresh bool) error {
+	//{ "index" : { "_index" : "test", "_type" : "type1", "_id" : "1" } }
+	by, err := WriteBulkBytes("delete", index, _type, id, ttl, date, data, refresh)
+	if err != nil {
+		return err
+	}
+	b.bulkChannel <- by
+	return nil
+}
+
 func (b *BulkIndexer) Update(index string, _type string, id, ttl string, date *time.Time, data interface{}, refresh bool) error {
 	//{ "index" : { "_index" : "test", "_type" : "type1", "_id" : "1" } }
 	by, err := WriteBulkBytes("update", index, _type, id, ttl, date, data, refresh)
