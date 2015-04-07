@@ -13,9 +13,10 @@ package elastigo
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/araddon/gou"
 	"github.com/bmizerany/assert"
-	"testing"
 )
 
 func TestSearchRequest(t *testing.T) {
@@ -42,7 +43,10 @@ func TestSearchSimple(t *testing.T) {
 	qry := Search("github").Pretty().Query(
 		Query().Search("add"),
 	)
-	out, _ := qry.Result(c)
+	out, err := qry.Result(c)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// how many different docs used the word "add"
 	expectedDocs := 10
 	expectedHits := 494
@@ -223,7 +227,10 @@ func TestSearchTerm(t *testing.T) {
 	qry := Search("github").Query(
 		Query().Term("repository.name", "jasmine"),
 	)
-	out, _ := qry.Result(c)
+	out, err := qry.Result(c)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// how many different docs have jasmine in repository.name?
 	expectedDocs := 4
 	expectedHits := 4
@@ -239,7 +246,10 @@ func TestSearchFields(t *testing.T) {
 	qry := Search("github").Query(
 		Query().Fields("repository.name", "jasmine", "", ""),
 	)
-	out, _ := qry.Result(c)
+	out, err := qry.Result(c)
+	if err != nil {
+		t.Fatal(err)
+	}
 	expectedDocs := 4
 	expectedHits := 4
 	assert.T(t, out.Hits.Len() == expectedDocs, fmt.Sprintf("Should have %v docs %v", expectedDocs, out.Hits.Len()))
@@ -253,7 +263,10 @@ func TestSearchMissingExists(t *testing.T) {
 	qry := Search("github").Filter(
 		Filter().Exists("repository.name"),
 	)
-	out, _ := qry.Result(c)
+	out, err := qry.Result(c)
+	if err != nil {
+		t.Fatal(err)
+	}
 	expectedDocs := 10
 	expectedTotal := 7695
 	assert.T(t, out.Hits.Len() == expectedDocs, fmt.Sprintf("Should have %v docs %v", expectedDocs, out.Hits.Len()))
@@ -312,7 +325,10 @@ func TestSearchSortOrder(t *testing.T) {
 	).Sort(
 		Sort("repository.watchers").Desc(),
 	)
-	out, _ := qry.Result(c)
+	out, err := qry.Result(c)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// how many different docs used the word "add", during entire time range
 	expectedDocs := 10
@@ -326,11 +342,14 @@ func TestSearchSortOrder(t *testing.T) {
 		fmt.Sprintf("Should have 41377 watchers= %v", h1.Int("repository.watchers")))
 
 	// ascending
-	out, _ = Search("github").Pretty().Query(
+	out, err = Search("github").Pretty().Query(
 		Query().All(),
 	).Sort(
 		Sort("repository.watchers"),
 	).Result(c)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// how many different docs used the word "add", during entire time range
 	assert.T(t, out.Hits.Len() == expectedDocs, fmt.Sprintf("Should have %v docs %v", expectedDocs, out.Hits.Len()))
 	assert.T(t, out.Hits.Total == expectedTotal, fmt.Sprintf("Should have %v total got %v", expectedTotal, out.Hits.Total))
@@ -341,11 +360,14 @@ func TestSearchSortOrder(t *testing.T) {
 		fmt.Sprintf("Should have 0 watchers= %v", h2.Int("repository.watchers")))
 
 	// sort descending with search
-	out, _ = Search("github").Pretty().Size("5").Query(
+	out, err = Search("github").Pretty().Size("5").Query(
 		Query().Search("python"),
 	).Sort(
 		Sort("repository.watchers").Desc(),
 	).Result(c)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// how many different docs used the word "add", during entire time range
 	expectedDocs = 5
 	expectedTotal = 734
