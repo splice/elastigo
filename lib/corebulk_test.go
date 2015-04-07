@@ -60,6 +60,7 @@ func TestBulkIndexerBasic(t *testing.T) {
 	c.DeleteIndex(testIndex)
 
 	indexer := c.NewBulkIndexer(3)
+	indexer.BufferDelayMax = time.Second
 	indexer.Sender = func(buf *bytes.Buffer) error {
 		messageSets += 1
 		totalBytesSent += buf.Len()
@@ -76,31 +77,33 @@ func TestBulkIndexerBasic(t *testing.T) {
 		"date": "yesterday",
 	}
 
-	err := indexer.Index(testIndex, "user", "1", "", &date, data, true)
+	if err := indexer.Index(testIndex, "user", "1", "", &date, data, true); err != nil {
+		t.Fatal(err)
+	}
 
 	waitFor(func() bool {
 		return len(buffers) > 0
-	}, 5)
+	}, 2)
 	// part of request is url, so lets factor that in
 	//totalBytesSent = totalBytesSent - len(*eshost)
 	assert.T(t, len(buffers) == 1, fmt.Sprintf("Should have sent one operation but was %d", len(buffers)))
-	assert.T(t, indexer.NumErrors() == 0 && err == nil, fmt.Sprintf("Should not have any errors. NumErrors: %v, err: %v", indexer.NumErrors(), err))
+	assert.T(t, indexer.NumErrors() == 0, fmt.Sprintf("Should not have any errors. NumErrors: %v", indexer.NumErrors()))
 	expectedBytes := 144
 	assert.T(t, totalBytesSent == expectedBytes, fmt.Sprintf("Should have sent %v bytes but was %v", expectedBytes, totalBytesSent))
 
-	err = indexer.Index(testIndex, "user", "2", "", nil, data, true)
+	if err := indexer.Index(testIndex, "user", "2", "", nil, data, true); err != nil {
+		t.Fatal(err)
+	}
 	<-time.After(time.Millisecond * 10) // we need to wait for doc to hit send channel
-	// this will test to ensure that Flush actually catches a doc
-	indexer.Flush()
+	if err := indexer.Stop(); err != nil {
+		t.Fatal(err)
+	}
 	totalBytesSent = totalBytesSent - len(*eshost)
-	assert.T(t, err == nil, fmt.Sprintf("Should have nil error  =%v", err))
 	assert.T(t, len(buffers) == 2, fmt.Sprintf("Should have another buffer ct=%d", len(buffers)))
 
 	assert.T(t, indexer.NumErrors() == 0, fmt.Sprintf("Should not have any errors %d", indexer.NumErrors()))
 	expectedBytes = 250 // with refresh
 	assert.T(t, closeInt(totalBytesSent, expectedBytes), fmt.Sprintf("Should have sent %v bytes but was %v", expectedBytes, totalBytesSent))
-
-	indexer.Stop()
 }
 
 // currently broken in drone.io
@@ -129,13 +132,17 @@ func XXXTestBulkUpdate(t *testing.T) {
 	}
 
 	// Lets make sure the data is in the index ...
-	_, err := c.Index("users", "user", "5", nil, user)
+	if _, err := c.Index("users", "user", "5", nil, user); err != nil {
+		t.Fatal(err)
+	}
 
 	// script and params
 	data := map[string]interface{}{
 		"script": "ctx._source.count += 2",
 	}
-	err = indexer.Update("users", "user", "5", "", &date, data, true)
+	if err := indexer.Update("users", "user", "5", "", &date, data, true); err != nil {
+		t.Fatal(err)
+	}
 	// So here's the deal. Flushing does seem to work, you just have to give the
 	// channel a moment to recieve the message ...
 	//	<- time.After(time.Millisecond * 20)
@@ -145,9 +152,11 @@ func XXXTestBulkUpdate(t *testing.T) {
 		return len(buffers) > 0
 	}, 5)
 
-	indexer.Stop()
+	if err := indexer.Stop(); err != nil {
+		t.Fatal(err)
+	}
 
-	assert.T(t, indexer.NumErrors() == 0 && err == nil, fmt.Sprintf("Should not have any errors, bulkErrorCt:%v, err:%v", indexer.NumErrors(), err))
+	assert.T(t, indexer.NumErrors() == 0, fmt.Sprintf("Should not have any errors, bulkErrorCt:%v", indexer.NumErrors()))
 
 	response, err := c.Get("users", "user", "5", nil)
 	assert.T(t, err == nil, fmt.Sprintf("Should not have any errors  %v", err))
@@ -186,7 +195,9 @@ func TestBulkSmallBatch(t *testing.T) {
 	indexer.Index("users", "user", "4", "", &date, data, true)
 	<-time.After(time.Millisecond * 200)
 	//	indexer.Flush()
-	indexer.Stop()
+	if err := indexer.Stop(); err != nil {
+		t.Fatal(err)
+	}
 	assert.T(t, messageSets == 2, fmt.Sprintf("Should have sent 2 message sets %d", messageSets))
 
 }
@@ -208,7 +219,9 @@ func TestBulkDelete(t *testing.T) {
 	indexer.Delete("fake", "fake_type", "1", true)
 
 	indexer.Flush()
-	indexer.Stop()
+	if err := indexer.Stop(); err != nil {
+		t.Fatal(err)
+	}
 
 	sent := string(sentBytes)
 
@@ -225,13 +238,11 @@ func TestBulkErrors(t *testing.T) {
 		return errors.New("FAIL")
 	}
 	indexer.Start()
-	go func() {
-		for i := 0; i < 20; i++ {
-			date := time.Unix(1257894000, 0)
-			data := map[string]interface{}{"name": "smurfs", "age": 22, "date": date}
-			indexer.Index("users", "user", strconv.Itoa(i), "", &date, data, true)
-		}
-	}()
+	for i := 0; i < 20; i++ {
+		date := time.Unix(1257894000, 0)
+		data := map[string]interface{}{"name": "smurfs", "age": 22, "date": date}
+		indexer.Index("users", "user", strconv.Itoa(i), "", &date, data, true)
+	}
 	err := indexer.Stop()
 	assert.NotEqual(t, nil, err, fmt.Sprintf("error should not be nil"))
 	assert.Equal(t, "FAIL", err.Error(), "error should be the expected one")

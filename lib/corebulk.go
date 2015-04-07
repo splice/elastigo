@@ -122,8 +122,6 @@ type BulkIndexer struct {
 	needsTimeBasedFlush bool
 	// Lock for document writes/operations
 	mu sync.Mutex
-	// Wait Group for the http sends
-	sendWg *sync.WaitGroup
 
 	// wait group for http calls goros
 	httpWg *sync.WaitGroup
@@ -144,7 +142,6 @@ func (c *Conn) NewBulkIndexer(maxConns int) *BulkIndexer {
 	b.BulkMaxDocs = BulkMaxDocs
 	b.BufferDelayMax = time.Duration(BulkDelaySeconds) * time.Second
 	b.bulkChannel = make(chan []byte, 100)
-	b.sendWg = new(sync.WaitGroup)
 	b.timerDoneChan = make(chan bool)
 	b.httpWg = new(sync.WaitGroup)
 	b.docWg = new(sync.WaitGroup)
@@ -179,7 +176,6 @@ func (b *BulkIndexer) Start() {
 		ch := <-b.shutdownChan
 		b.Flush()
 		b.shutdown()
-		ch <- struct{}{}
 		close(ch)
 	}()
 }
@@ -193,16 +189,6 @@ func (b *BulkIndexer) Stop() error {
 	return b.errs.err()
 }
 
-// Make a channel that will close when the given WaitGroup is done.
-func wgChan(wg *sync.WaitGroup) <-chan interface{} {
-	ch := make(chan interface{})
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
-	return ch
-}
-
 func (b *BulkIndexer) PendingDocuments() int {
 	return b.docCt
 }
@@ -214,14 +200,6 @@ func (b *BulkIndexer) Flush() {
 		b.send(b.buf)
 	}
 	b.mu.Unlock()
-	select {
-	case <-wgChan(b.sendWg):
-		// done
-		return
-	case <-time.After(time.Second * time.Duration(MAX_SHUTDOWN_SECS)):
-		// timeout!
-		return
-	}
 }
 
 func (b *BulkIndexer) startHttpSender() {
@@ -235,7 +213,6 @@ func (b *BulkIndexer) startHttpSender() {
 			defer b.httpWg.Done()
 
 			for buf := range b.sendBuf {
-				b.sendWg.Add(1)
 				// Copy for the potential re-send.
 				bufCopy := bytes.NewBuffer(buf.Bytes())
 				err := b.Sender(buf)
@@ -250,13 +227,11 @@ func (b *BulkIndexer) startHttpSender() {
 						err = b.Sender(bufCopy)
 						if err == nil {
 							// Successfully re-sent with no error
-							b.sendWg.Done()
 							continue
 						}
 					}
 					b.errs.add(err)
 				}
-				b.sendWg.Done()
 			}
 		}()
 	}
