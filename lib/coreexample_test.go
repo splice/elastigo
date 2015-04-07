@@ -23,10 +23,12 @@ import (
 func ExampleBulkIndexer_simple() {
 	c := elastigo.NewConn()
 
-	indexer := c.NewBulkIndexerErrors(10, 60)
+	indexer := c.NewBulkIndexerRetry(10, 60)
 	indexer.Start()
 	indexer.Index("twitter", "user", "1", "", nil, `{"name":"bob"}`, true)
-	indexer.Stop()
+	if err := indexer.Stop(); err != nil {
+		// handle error
+	}
 }
 
 // The inspecting the response
@@ -48,5 +50,7 @@ func ExampleBulkIndexer_responses() {
 	for i := 0; i < 20; i++ {
 		indexer.Index("twitter", "user", strconv.Itoa(i), "", nil, `{"name":"bob"}`, true)
 	}
-	indexer.Stop()
+	if err := indexer.Stop(); err != nil {
+		// handle error
+	}
 }

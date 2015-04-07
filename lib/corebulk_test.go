@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -217,16 +218,14 @@ func TestBulkDelete(t *testing.T) {
 	assert.T(t, asExpected, fmt.Sprintf("Should have sent '%s' but actually sent '%s'", expected, sent))
 }
 
-func XXXTestBulkErrors(t *testing.T) {
-	// lets set a bad port, and hope we get a conn refused error?
+func TestBulkErrors(t *testing.T) {
 	c := NewTestConn()
-	c.Port = "27845"
-	defer func() {
-		c.Port = "9200"
-	}()
-	indexer := c.NewBulkIndexerErrors(10, 1)
+	indexer := c.NewBulkIndexerRetry(10, 1)
+	indexer.Sender = func(_ *bytes.Buffer) error {
+		fmt.Println(">>>>>")
+		return errors.New("FAIL")
+	}
 	indexer.Start()
-	errorCt := 0
 	go func() {
 		for i := 0; i < 20; i++ {
 			date := time.Unix(1257894000, 0)
@@ -234,16 +233,13 @@ func XXXTestBulkErrors(t *testing.T) {
 			indexer.Index("users", "user", strconv.Itoa(i), "", &date, data, true)
 		}
 	}()
-	var errBuf *ErrorBuffer
-	for errBuf = range indexer.ErrorChannel {
-		errorCt++
-		break
+	err := indexer.Stop()
+	if err == nil {
+		t.Fatal("want error, got nil")
 	}
-	if errBuf.Buf.Len() > 0 {
-		gou.Debug(errBuf.Err)
+	if err.Error() != "FAIL" {
+		t.Fatal("want error FAIL, got %s", err)
 	}
-	assert.T(t, errorCt > 0, fmt.Sprintf("ErrorCt should be > 0 %d", errorCt))
-	indexer.Stop()
 }
 
 /*
