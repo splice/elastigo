@@ -114,6 +114,7 @@ func (c *Conn) NewBulkIndexer(maxConns int) *BulkIndexer {
 	b.docDoneChan = make(chan bool)
 	b.timerDoneChan = make(chan bool)
 	b.httpDoneChan = make(chan bool)
+	b.gorosWg = new(sync.WaitGroup)
 	return &b
 }
 
