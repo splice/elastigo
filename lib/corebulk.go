@@ -99,12 +99,8 @@ type BulkIndexer struct {
 
 	// shutdown channel
 	shutdownChan chan chan struct{}
-	// Channel to shutdown http send go-routines
-	httpDoneChan chan bool
 	// channel to shutdown timer
 	timerDoneChan chan bool
-	// channel to shutdown doc go-routines
-	docDoneChan chan bool
 
 	// Channel to send a complete byte.Buffer to the http sendor
 	sendBuf chan *bytes.Buffer
@@ -129,8 +125,10 @@ type BulkIndexer struct {
 	// Wait Group for the http sends
 	sendWg *sync.WaitGroup
 
-	// wait group to wait on shutdown for all goros
-	gorosWg *sync.WaitGroup
+	// wait group for http calls goros
+	httpWg *sync.WaitGroup
+	// wait group for doc goro
+	docWg *sync.WaitGroup
 }
 
 func (b *BulkIndexer) NumErrors() uint64 {
@@ -147,10 +145,9 @@ func (c *Conn) NewBulkIndexer(maxConns int) *BulkIndexer {
 	b.BufferDelayMax = time.Duration(BulkDelaySeconds) * time.Second
 	b.bulkChannel = make(chan []byte, 100)
 	b.sendWg = new(sync.WaitGroup)
-	b.docDoneChan = make(chan bool)
 	b.timerDoneChan = make(chan bool)
-	b.httpDoneChan = make(chan bool)
-	b.gorosWg = new(sync.WaitGroup)
+	b.httpWg = new(sync.WaitGroup)
+	b.docWg = new(sync.WaitGroup)
 	b.errs = &syncErrorList{}
 	return &b
 }
@@ -178,6 +175,7 @@ func (b *BulkIndexer) Start() {
 		b.startHttpSender()
 		b.startDocChannel()
 		b.startTimer()
+
 		ch := <-b.shutdownChan
 		b.Flush()
 		b.shutdown()
@@ -216,59 +214,49 @@ func (b *BulkIndexer) Flush() {
 		b.send(b.buf)
 	}
 	b.mu.Unlock()
-	for {
-		select {
-		case <-wgChan(b.sendWg):
-			// done
-			return
-		case <-time.After(time.Second * time.Duration(MAX_SHUTDOWN_SECS)):
-			// timeout!
-			return
-		}
+	select {
+	case <-wgChan(b.sendWg):
+		// done
+		return
+	case <-time.After(time.Second * time.Duration(MAX_SHUTDOWN_SECS)):
+		// timeout!
+		return
 	}
 }
 
 func (b *BulkIndexer) startHttpSender() {
-
 	// this sends http requests to elasticsearch it uses maxConns to open up that
 	// many goroutines, each of which will synchronously call ElasticSearch
 	// in theory, the whole set will cause a backup all the way to IndexBulk if
 	// we have consumed all maxConns
-	b.gorosWg.Add(b.maxConns)
+	b.httpWg.Add(b.maxConns)
 	for i := 0; i < b.maxConns; i++ {
 		go func() {
-			defer b.gorosWg.Done()
+			defer b.httpWg.Done()
 
-			for {
-				select {
-				case buf := <-b.sendBuf:
-					b.sendWg.Add(1)
-					// Copy for the potential re-send.
-					bufCopy := bytes.NewBuffer(buf.Bytes())
-					err := b.Sender(buf)
+			for buf := range b.sendBuf {
+				b.sendWg.Add(1)
+				// Copy for the potential re-send.
+				bufCopy := bytes.NewBuffer(buf.Bytes())
+				err := b.Sender(buf)
 
-					// Perhaps a b.FailureStrategy(err)  ??  with different types of strategies
-					//  1.  Retry, then panic
-					//  2.  Retry then return error and let runner decide
-					//  3.  Retry, then log to disk?   retry later?
-					if err != nil {
-						if b.RetryForSeconds > 0 {
-							time.Sleep(time.Second * time.Duration(b.RetryForSeconds))
-							err = b.Sender(bufCopy)
-							if err == nil {
-								// Successfully re-sent with no error
-								b.sendWg.Done()
-								continue
-							}
+				// Perhaps a b.FailureStrategy(err)  ??  with different types of strategies
+				//  1.  Retry, then panic
+				//  2.  Retry then return error and let runner decide
+				//  3.  Retry, then log to disk?   retry later?
+				if err != nil {
+					if b.RetryForSeconds > 0 {
+						time.Sleep(time.Second * time.Duration(b.RetryForSeconds))
+						err = b.Sender(bufCopy)
+						if err == nil {
+							// Successfully re-sent with no error
+							b.sendWg.Done()
+							continue
 						}
-						b.errs.add(err)
 					}
-					b.sendWg.Done()
-				case <-b.httpDoneChan:
-					// shutdown this go routine
-					return
+					b.errs.add(err)
 				}
-
+				b.sendWg.Done()
 			}
 		}()
 	}
@@ -278,10 +266,7 @@ func (b *BulkIndexer) startHttpSender() {
 // even if we haven't hit max messages/size
 func (b *BulkIndexer) startTimer() {
 	ticker := time.NewTicker(b.BufferDelayMax)
-	b.gorosWg.Add(1)
 	go func() {
-		defer b.gorosWg.Done()
-
 		for {
 			select {
 			case <-ticker.C:
@@ -300,7 +285,6 @@ func (b *BulkIndexer) startTimer() {
 				// shutdown this go routine
 				return
 			}
-
 		}
 	}()
 }
@@ -308,27 +292,27 @@ func (b *BulkIndexer) startTimer() {
 func (b *BulkIndexer) startDocChannel() {
 	// This goroutine accepts incoming byte arrays from the IndexBulk function and
 	// writes to buffer
-	b.gorosWg.Add(1)
+	b.docWg.Add(1)
 	go func() {
-		defer b.gorosWg.Done()
+		defer b.docWg.Done()
 
-		for {
-			select {
-			case docBytes := <-b.bulkChannel:
-				b.mu.Lock()
-				b.docCt += 1
-				b.buf.Write(docBytes)
-				if b.buf.Len() >= b.BulkMaxBuffer || b.docCt >= b.BulkMaxDocs {
-					b.needsTimeBasedFlush = false
-					//log.Printf("Send due to size:  docs=%d  bufsize=%d", b.docCt, b.buf.Len())
-					b.send(b.buf)
-				}
-				b.mu.Unlock()
-			case <-b.docDoneChan:
-				// shutdown this go routine
-				return
+		for docBytes := range b.bulkChannel {
+			b.mu.Lock()
+			b.docCt += 1
+			b.buf.Write(docBytes)
+			if b.buf.Len() >= b.BulkMaxBuffer || b.docCt >= b.BulkMaxDocs {
+				b.needsTimeBasedFlush = false
+				//log.Printf("Send due to size:  docs=%d  bufsize=%d", b.docCt, b.buf.Len())
+				b.send(b.buf)
 			}
+			b.mu.Unlock()
 		}
+		// enqueue the remaning bytes, if any
+		b.mu.Lock()
+		if b.docCt > 0 {
+			b.send(b.buf)
+		}
+		b.mu.Unlock()
 	}()
 }
 
@@ -342,12 +326,11 @@ func (b *BulkIndexer) send(buf *bytes.Buffer) {
 
 func (b *BulkIndexer) shutdown() {
 	// This must be called After flush
-	b.docDoneChan <- true
+	close(b.bulkChannel)
+	b.docWg.Wait()
+	close(b.sendBuf)
+	b.httpWg.Wait()
 	b.timerDoneChan <- true
-	for i := 0; i < b.maxConns; i++ {
-		b.httpDoneChan <- true
-	}
-	b.gorosWg.Wait()
 }
 
 // The index bulk API adds or updates a typed JSON document to a specific index, making it searchable.

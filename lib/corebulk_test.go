@@ -222,7 +222,6 @@ func TestBulkErrors(t *testing.T) {
 	c := NewTestConn()
 	indexer := c.NewBulkIndexerRetry(10, 1)
 	indexer.Sender = func(_ *bytes.Buffer) error {
-		fmt.Println(">>>>>")
 		return errors.New("FAIL")
 	}
 	indexer.Start()
@@ -234,12 +233,8 @@ func TestBulkErrors(t *testing.T) {
 		}
 	}()
 	err := indexer.Stop()
-	if err == nil {
-		t.Fatal("want error, got nil")
-	}
-	if err.Error() != "FAIL" {
-		t.Fatal("want error FAIL, got %s", err)
-	}
+	assert.NotEqual(t, nil, err, fmt.Sprintf("error should not be nil"))
+	assert.Equal(t, "FAIL", err.Error(), "error should be the expected one")
 }
 
 /*
