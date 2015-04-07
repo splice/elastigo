@@ -92,6 +92,9 @@ type BulkIndexer struct {
 	mu sync.Mutex
 	// Wait Group for the http sends
 	sendWg *sync.WaitGroup
+
+	// wait group to wait on shutdown for all goros
+	gorosWg *sync.WaitGroup
 }
 
 func (b *BulkIndexer) NumErrors() uint64 {
@@ -196,8 +199,11 @@ func (b *BulkIndexer) startHttpSender() {
 	// many goroutines, each of which will synchronously call ElasticSearch
 	// in theory, the whole set will cause a backup all the way to IndexBulk if
 	// we have consumed all maxConns
+	b.gorosWg.Add(b.maxConns)
 	for i := 0; i < b.maxConns; i++ {
 		go func() {
+			defer b.gorosWg.Done()
+
 			for {
 				select {
 				case buf := <-b.sendBuf:
@@ -239,7 +245,10 @@ func (b *BulkIndexer) startHttpSender() {
 // even if we haven't hit max messages/size
 func (b *BulkIndexer) startTimer() {
 	ticker := time.NewTicker(b.BufferDelayMax)
+	b.gorosWg.Add(1)
 	go func() {
+		defer b.gorosWg.Done()
+
 		for {
 			select {
 			case <-ticker.C:
@@ -266,7 +275,10 @@ func (b *BulkIndexer) startTimer() {
 func (b *BulkIndexer) startDocChannel() {
 	// This goroutine accepts incoming byte arrays from the IndexBulk function and
 	// writes to buffer
+	b.gorosWg.Add(1)
 	go func() {
+		defer b.gorosWg.Done()
+
 		for {
 			select {
 			case docBytes := <-b.bulkChannel:
@@ -302,6 +314,7 @@ func (b *BulkIndexer) shutdown() {
 	for i := 0; i < b.maxConns; i++ {
 		b.httpDoneChan <- true
 	}
+	b.gorosWg.Wait()
 }
 
 // The index bulk API adds or updates a typed JSON document to a specific index, making it searchable.
