@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,6 +50,7 @@ func closeInt(a, b int) bool {
 func TestBulkIndexerBasic(t *testing.T) {
 	testIndex := "users"
 	var (
+		mu             sync.Mutex // guards following fields
 		buffers        = make([]*bytes.Buffer, 0)
 		totalBytesSent int
 		messageSets    int
@@ -62,9 +64,11 @@ func TestBulkIndexerBasic(t *testing.T) {
 	indexer := c.NewBulkIndexer(3)
 	indexer.BufferDelayMax = time.Second
 	indexer.Sender = func(buf *bytes.Buffer) error {
-		messageSets += 1
+		mu.Lock()
+		messageSets++
 		totalBytesSent += buf.Len()
 		buffers = append(buffers, buf)
+		mu.Unlock()
 		// log.Printf("buffer:%s", string(buf.Bytes()))
 		return indexer.Send(buf)
 	}
@@ -82,6 +86,8 @@ func TestBulkIndexerBasic(t *testing.T) {
 	}
 
 	waitFor(func() bool {
+		mu.Lock()
+		defer mu.Unlock()
 		return len(buffers) > 0
 	}, 2)
 	// part of request is url, so lets factor that in
