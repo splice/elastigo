@@ -19,7 +19,10 @@ import (
 	"io"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 const (
@@ -32,11 +35,6 @@ const (
 	// maximum wait shutdown seconds
 	MAX_SHUTDOWN_SECS = 5
 )
-
-type ErrorBuffer struct {
-	Err error
-	Buf *bytes.Buffer
-}
 
 type syncErrorList struct {
 	m    sync.Mutex
@@ -130,7 +128,7 @@ type BulkIndexer struct {
 }
 
 func (b *BulkIndexer) NumErrors() uint64 {
-	return b.numErrors
+	return atomic.LoadUint64(&b.numErrors)
 }
 
 func (c *Conn) NewBulkIndexer(maxConns int) *BulkIndexer {
@@ -222,6 +220,8 @@ func (b *BulkIndexer) startHttpSender() {
 				//  2.  Retry then return error and let runner decide
 				//  3.  Retry, then log to disk?   retry later?
 				if err != nil {
+					fmt.Printf(">>> elastigo send error: %#v\n", err)
+
 					if b.RetryForSeconds > 0 {
 						time.Sleep(time.Second * time.Duration(b.RetryForSeconds))
 						err = b.Sender(bufCopy)
@@ -362,14 +362,15 @@ func (b *BulkIndexer) Send(buf *bytes.Buffer) error {
 	body, err := b.conn.DoCommand("POST", "/_bulk", nil, buf)
 
 	if err != nil {
-		b.numErrors += 1
+		atomic.AddUint64(&b.numErrors, 1)
 		return err
 	}
 	// check for response errors, bulk insert will give 200 OK but then include errors in response
 	jsonErr := json.Unmarshal(body, &response)
 	if jsonErr == nil {
+		spew.Dump(response)
 		if response.Errors {
-			b.numErrors += uint64(len(response.Items))
+			atomic.AddUint64(&b.numErrors, uint64(len(response.Items)))
 			return fmt.Errorf("Bulk Insertion Error. Failed item count [%d]", len(response.Items))
 		}
 	}
