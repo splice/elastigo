@@ -21,8 +21,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 const (
@@ -36,40 +34,53 @@ const (
 	MAX_SHUTDOWN_SECS = 5
 )
 
-type syncErrorList struct {
-	m    sync.Mutex
-	errs []error
-}
+// ErrList is a list of errors that implement the error interface.
+type ErrList []error
 
-func (e *syncErrorList) add(err error) {
-	e.m.Lock()
-	e.errs = append(e.errs, err)
-	e.m.Unlock()
-}
-
-func (e *syncErrorList) err() error {
-	e.m.Lock()
-	defer e.m.Unlock()
-
-	if len(e.errs) == 0 {
-		return nil
-	}
-	return e
-}
-
-func (e *syncErrorList) Error() string {
+// Error returns the combined messages of the errors in the ErrList.
+func (e ErrList) Error() string {
 	var buf bytes.Buffer
 
-	e.m.Lock()
-	defer e.m.Unlock()
-
-	for i, err := range e.errs {
+	for i, err := range e {
 		if i > 0 {
 			buf.WriteString("\n")
 		}
 		buf.WriteString(err.Error())
 	}
 	return buf.String()
+}
+
+// syncErrList is a thread-safe error list with helper methods to
+// add errors.
+type syncErrList struct {
+	m    sync.Mutex
+	list ErrList
+}
+
+func (e *syncErrList) add(err error) {
+	e.m.Lock()
+	defer e.m.Unlock()
+	if el, ok := err.(ErrList); ok {
+		e.list = append(e.list, el...)
+		return
+	}
+	e.list = append(e.list, err)
+}
+
+func (e *syncErrList) err() error {
+	e.m.Lock()
+	defer e.m.Unlock()
+
+	if len(e.list) == 0 {
+		return nil
+	}
+	return e.list
+}
+
+func (e *syncErrList) Error() string {
+	e.m.Lock()
+	defer e.m.Unlock()
+	return e.list.Error()
 }
 
 // A bulk indexer creates goroutines, and channels for connecting and sending data
@@ -87,7 +98,7 @@ type BulkIndexer struct {
 	RetryForSeconds int
 
 	// list of errors cumulated during the bulk action
-	errs *syncErrorList
+	errs *syncErrList
 
 	// channel for sending to background indexer
 	bulkChannel chan []byte
@@ -143,7 +154,7 @@ func (c *Conn) NewBulkIndexer(maxConns int) *BulkIndexer {
 	b.timerDoneChan = make(chan bool)
 	b.httpWg = new(sync.WaitGroup)
 	b.docWg = new(sync.WaitGroup)
-	b.errs = &syncErrorList{}
+	b.errs = &syncErrList{}
 	return &b
 }
 
@@ -220,9 +231,25 @@ func (b *BulkIndexer) startHttpSender() {
 				//  2.  Retry then return error and let runner decide
 				//  3.  Retry, then log to disk?   retry later?
 				if err != nil {
-					fmt.Printf(">>> elastigo send error: %#v\n", err)
-
-					if b.RetryForSeconds > 0 {
+					// check if it is worth retrying (if all errors are 4xx codes,
+					// then the request is in error and won't work even with a retry).
+					retry := true
+					if el, ok := err.(ErrList); ok {
+						// default to no retry
+						retry = false
+						for _, e := range el {
+							if bae, ok := e.(*BulkActionError); ok {
+								if bae.Status >= 500 {
+									retry = true
+									break
+								}
+							} else {
+								retry = true
+								break
+							}
+						}
+					}
+					if retry && b.RetryForSeconds > 0 {
 						time.Sleep(time.Second * time.Duration(b.RetryForSeconds))
 						err = b.Sender(bufCopy)
 						if err == nil {
@@ -338,7 +365,6 @@ func (b *BulkIndexer) Delete(index, _type, id string, refresh bool) {
 }
 
 func (b *BulkIndexer) UpdateWithPartialDoc(index string, _type string, id, ttl string, date *time.Time, partialDoc interface{}, upsert bool, refresh bool) error {
-
 	var data map[string]interface{} = make(map[string]interface{})
 
 	data["doc"] = partialDoc
@@ -348,33 +374,61 @@ func (b *BulkIndexer) UpdateWithPartialDoc(index string, _type string, id, ttl s
 	return b.Update(index, _type, id, ttl, date, data, refresh)
 }
 
+type responseStruct struct {
+	Took   int64                         `json:"took"`
+	Errors bool                          `json:"errors"`
+	Items  []map[string]*BulkActionError `json:"items"`
+}
+
+type BulkActionError struct {
+	Action  string
+	Type    string `json:"_type"`
+	ID      string `json:"_id"`
+	Status  int    `json:"status"`
+	Message string `json:"error"`
+	Index   string `json:"_index"`
+}
+
+func (b *BulkActionError) Error() string {
+	return fmt.Sprintf("elastigo: %s %s/%s/%s [%d] %s",
+		b.Action, b.Index, b.Type, b.ID, b.Status, b.Message)
+}
+
 // This does the actual send of a buffer, which has already been formatted
 // into bytes of ES formatted bulk data
 func (b *BulkIndexer) Send(buf *bytes.Buffer) error {
-	type responseStruct struct {
-		Took   int64                    `json:"took"`
-		Errors bool                     `json:"errors"`
-		Items  []map[string]interface{} `json:"items"`
-	}
-
-	response := responseStruct{}
 
 	body, err := b.conn.DoCommand("POST", "/_bulk", nil, buf)
-
 	if err != nil {
 		atomic.AddUint64(&b.numErrors, 1)
 		return err
 	}
+
 	// check for response errors, bulk insert will give 200 OK but then include errors in response
+	response := responseStruct{}
 	jsonErr := json.Unmarshal(body, &response)
 	if jsonErr == nil {
-		spew.Dump(response)
 		if response.Errors {
-			atomic.AddUint64(&b.numErrors, uint64(len(response.Items)))
-			return fmt.Errorf("Bulk Insertion Error. Failed item count [%d]", len(response.Items))
+			err := errorFromBulkResponse(response)
+			atomic.AddUint64(&b.numErrors, uint64(len(err)))
+			return err
 		}
 	}
-	return nil
+	return jsonErr
+}
+
+func errorFromBulkResponse(res responseStruct) ErrList {
+	var el ErrList
+
+	for _, item := range res.Items {
+		for k, v := range item {
+			if v.Status >= 400 {
+				v.Action = k
+				el = append(el, v)
+			}
+		}
+	}
+	return el
 }
 
 // Given a set of arguments for index, type, id, data create a set of bytes that is formatted for bulkd index
