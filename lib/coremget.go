@@ -50,11 +50,12 @@ type MGetRequestContainer struct {
 }
 
 type MGetRequest struct {
-	Index  string   `json:"_index"`
-	Type   string   `json:"_type"`
-	ID     string   `json:"_id"`
-	IDS    []string `json:"_ids,omitempty"`
-	Fields []string `json:"fields,omitempty"`
+	Index   string   `json:"_index"`
+	Type    string   `json:"_type"`
+	ID      string   `json:"_id"`
+	IDS     []string `json:"_ids,omitempty"`
+	Fields  []string `json:"fields,omitempty"`
+	Routing string   `json:"_routing,omitempty"`
 }
 
 type MGetResponseContainer struct {
