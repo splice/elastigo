@@ -195,6 +195,14 @@ func (f *FilterOp) Lt(lt interface{}) *FilterOp {
 	f.Range[f.curField]["lt"] = lt
 	return f
 }
+func (f *FilterOp) Gte(gte interface{}) *FilterOp {
+	f.Range[f.curField]["gte"] = gte
+	return f
+}
+func (f *FilterOp) Lte(lte interface{}) *FilterOp {
+	f.Range[f.curField]["lte"] = lte
+	return f
+}
 func (f *FilterOp) Exists(name string) *FilterOp {
 	f.Exist = map[string]string{"field": name}
 	return f
