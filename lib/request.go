@@ -37,7 +37,7 @@ func (r *Request) SetBodyJson(data interface{}) error {
 		return err
 	}
 	r.SetBodyBytes(body)
-	fmt.Printf("elastigo: body size: %d\nbody:\n%s\n", len(body), string(body))
+	//fmt.Printf("elastigo: body size: %d\nbody:\n%s\n", len(body), string(body))
 	r.Header.Set("Content-Type", "application/json")
 	return nil
 }
