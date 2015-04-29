@@ -56,7 +56,8 @@ some ways to serialize
 */
 type QueryDsl struct {
 	QueryEmbed
-	FilterVal *FilterOp `json:"filter,omitempty"`
+	//FilterVal *FilterOp `json:"filter,omitempty"`
+	FilterVal *FilterWrap `json:"filter,omitempty"`
 }
 
 // The core Query Syntax can be embedded as a child of a variety of different parents
@@ -99,15 +100,15 @@ func (q *QueryDsl) All() *QueryDsl {
 }
 
 // Limit the query to this range
-func (q *QueryDsl) Range(fop *FilterOp) *QueryDsl {
-	if q.FilterVal == nil {
-		q.FilterVal = fop
-		return q
-	}
-	// TODO:  this is not valid, refactor
-	q.FilterVal.Add(fop)
-	return q
-}
+// func (q *QueryDsl) Range(fop *FilterOp) *QueryDsl {
+// 	if q.FilterVal == nil {
+// 		q.FilterVal = fop
+// 		return q
+// 	}
+// 	// TODO:  this is not valid, refactor
+// 	q.FilterVal.Add(fop)
+// 	return q
+// }
 
 // Add a term search for a specific field
 //    Term("user","kimchy")
@@ -166,8 +167,11 @@ func (q *QueryDsl) Fields(fields, search, exists, missing string) *QueryDsl {
 }
 
 // Filter this query
-func (q *QueryDsl) Filter(f *FilterOp) *QueryDsl {
-	q.FilterVal = f
+func (q *QueryDsl) Filter(fs ...interface{}) *QueryDsl {
+	if q.FilterVal == nil {
+		q.FilterVal = NewFilterWrap()
+	}
+	q.FilterVal.addFilters(fs)
 	return q
 }
 

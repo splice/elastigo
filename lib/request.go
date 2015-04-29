@@ -15,13 +15,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	hostpool "github.com/bitly/go-hostpool"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	hostpool "github.com/bitly/go-hostpool"
 )
 
 type Request struct {
@@ -31,11 +32,12 @@ type Request struct {
 }
 
 func (r *Request) SetBodyJson(data interface{}) error {
-	body, err := json.Marshal(data)
+	body, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err
 	}
 	r.SetBodyBytes(body)
+	fmt.Printf("elastigo: body size: %d\nbody:\n%s\n", len(body), string(body))
 	r.Header.Set("Content-Type", "application/json")
 	return nil
 }

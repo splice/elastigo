@@ -32,6 +32,7 @@ func (c *Conn) DoCommand(method string, url string, args map[string]interface{},
 	if err != nil {
 		return body, err
 	}
+	//fmt.Printf("elastigo.DoCommand: %s %s\n", method, req.URL)
 
 	if data != nil {
 		switch v := data.(type) {
@@ -40,6 +41,7 @@ func (c *Conn) DoCommand(method string, url string, args map[string]interface{},
 		case io.Reader:
 			req.SetBody(v)
 		case []byte:
+			//fmt.Printf("elastigo: body:\n%s\n", string(v))
 			req.SetBodyBytes(v)
 		default:
 			err = req.SetBodyJson(v)
@@ -65,6 +67,9 @@ func (c *Conn) DoCommand(method string, url string, args map[string]interface{},
 		}
 		return body, jsonErr
 	}
+	// if ix := bytes.Index(body, []byte(`"aggregations"`)); ix >= 0 {
+	// 	fmt.Println("\n>>> ", string(body[ix:ix+200]), "\n")
+	// }
 	return body, nil
 }
 
