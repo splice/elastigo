@@ -14,8 +14,9 @@ package elastigo
 import (
 	"fmt"
 	//"github.com/araddon/gou"
-	"github.com/bmizerany/assert"
 	"testing"
+
+	"github.com/bmizerany/assert"
 )
 
 func TestFilters(t *testing.T) {

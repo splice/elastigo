@@ -197,7 +197,7 @@ func TestSearchFacetRange(t *testing.T) {
 	qry = Search("github").Pretty().Facet(
 		Facet().Fields("actor").Size("500"),
 	).Query(
-		Query().Range(
+		Query().Filter(
 			Range().Field("created_at").From("2012-12-10T15:00:00-08:00").To("2012-12-10T15:10:00-08:00"),
 		).Search("add"),
 	)
@@ -307,7 +307,7 @@ func TestSearchRange(t *testing.T) {
 
 	// now lets filter by a subset of the total time
 	out, _ := Search("github").Size("25").Query(
-		Query().Range(
+		Query().Filter(
 			Range().Field("created_at").From("2012-12-10T15:00:00-08:00").To("2012-12-10T15:10:00-08:00"),
 		).Search("add"),
 	).Result(c)
