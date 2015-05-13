@@ -1,8 +1,6 @@
 package elastigo
 
-import (
-	"encoding/json"
-)
+import "encoding/json"
 
 // AggregateBucket holds information about a bucket-type aggregate
 // as returned by an ES query.
@@ -34,6 +32,7 @@ func ExtractAggregates(sr *SearchResult) ([]*AggregateBucket, error) {
 			Name:     k,
 			KeyCount: make(map[string]int),
 		}
+
 		if vm, ok := v.(map[string]interface{}); ok {
 			if buck, ok := vm["buckets"]; ok {
 				// buck should be an array of maps having two keys each, "key"
