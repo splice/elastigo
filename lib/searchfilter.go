@@ -138,12 +138,13 @@ func CompoundFilter(fl ...interface{}) *FilterWrap {
 	return FilterVal
 }
 
-// BoolFilterOp. Only should needed for the moment.
+// BoolFilterOp.
 // https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-bool-query.html
 type BoolFilterOp struct {
 	MinShouldMatch int                                 `json:"minimum_should_match,omitempty"`
 	Boost          float64                             `json:"boost,omitempty"`
-	Should         []map[string]map[string]interface{} `json:"should"`
+	Should         []map[string]map[string]interface{} `json:"should,omitempty"`
+	Must           []map[string]map[string]interface{} `json:"must,omitempty"`
 }
 
 // AddShould adds a new Should term criterion on the BoolFilterOp.
@@ -151,6 +152,13 @@ func (b *BoolFilterOp) AddShould(term string, val interface{}) {
 	m := make(map[string]map[string]interface{})
 	m["term"] = map[string]interface{}{term: val}
 	b.Should = append(b.Should, m)
+}
+
+// AddMust adds a new Must term criterion on the BoolFilterOp.
+func (b *BoolFilterOp) AddMust(term string, val interface{}) {
+	m := make(map[string]map[string]interface{})
+	m["term"] = map[string]interface{}{term: val}
+	b.Must = append(b.Must, m)
 }
 
 type FilterOp struct {
