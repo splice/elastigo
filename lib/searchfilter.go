@@ -138,12 +138,35 @@ func CompoundFilter(fl ...interface{}) *FilterWrap {
 	return FilterVal
 }
 
+// BoolFilterOp. Only should needed for the moment.
+// https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-bool-query.html
+type BoolFilterOp struct {
+	MinShouldMatch int                                 `json:"minimum_should_match,omitempty"`
+	Boost          float64                             `json:"boost,omitempty"`
+	Should         []map[string]map[string]interface{} `json:"should"`
+}
+
+// AddShould adds a new Should term criterion on the BoolFilterOp.
+func (b *BoolFilterOp) AddShould(term string, val interface{}) {
+	m := make(map[string]map[string]interface{})
+	m["term"] = map[string]interface{}{term: val}
+	b.Should = append(b.Should, m)
+}
+
 type FilterOp struct {
 	curField   string
 	TermsMap   map[string][]interface{}          `json:"terms,omitempty"`
 	Range      map[string]map[string]interface{} `json:"range,omitempty"`
 	Exist      map[string]string                 `json:"exists,omitempty"`
 	MissingVal map[string]string                 `json:"missing,omitempty"`
+	Bool       *BoolFilterOp                     `json:"bool,omitempty"`
+}
+
+func Bool(minMatch int, boost float64) *FilterOp {
+	return &FilterOp{Bool: &BoolFilterOp{
+		MinShouldMatch: minMatch,
+		Boost:          boost,
+	}}
 }
 
 // A range is a special type of Filter operation
