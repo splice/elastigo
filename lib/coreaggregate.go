@@ -1,8 +1,6 @@
 package elastigo
 
-import (
-	"encoding/json"
-)
+import "encoding/json"
 
 // AggregateBucket holds information about a bucket-type aggregate
 // as returned by an ES query.
@@ -30,30 +28,49 @@ func ExtractAggregates(sr *SearchResult) ([]*AggregateBucket, error) {
 	}
 	var aggs []*AggregateBucket
 	for k, v := range m {
-		agg := AggregateBucket{
-			Name:     k,
-			KeyCount: make(map[string]int),
+		bucket := extractAggBucket(k, v)
+		if len(bucket.KeyCount) > 0 {
+			aggs = append(aggs, bucket)
 		}
-		if vm, ok := v.(map[string]interface{}); ok {
-			if buck, ok := vm["buckets"]; ok {
-				// buck should be an array of maps having two keys each, "key"
-				// and "doc_count"
-				if ar, ok := buck.([]interface{}); ok {
-					for _, kdc := range ar {
-						if mkdc, ok := kdc.(map[string]interface{}); ok {
-							if k, ok := mkdc["key"]; ok {
-								if cnt, ok := mkdc["doc_count"]; ok {
-									agg.KeyCount[k.(string)] = int(cnt.(float64))
-								}
-							}
-						}
+	}
+	return aggs, nil
+}
+
+func extractAggBucket(k string, v interface{}) *AggregateBucket {
+	agg := &AggregateBucket{
+		Name:     k,
+		KeyCount: make(map[string]int),
+	}
+
+	vm, ok := v.(map[string]interface{})
+	if !ok {
+		return agg
+	}
+
+	buck, ok := vm["buckets"]
+	if !ok {
+		// OK, we have to go down a level. Hang on.
+		for k, v := range vm {
+			if k == "doc_count" {
+				continue
+			}
+			// ... and recurse.
+			return extractAggBucket(k, v)
+		}
+		return agg
+	}
+	// buck should be an array of maps having two keys each, "key"
+	// and "doc_count"
+	if ar, ok := buck.([]interface{}); ok {
+		for _, kdc := range ar {
+			if mkdc, ok := kdc.(map[string]interface{}); ok {
+				if k, ok := mkdc["key"]; ok {
+					if cnt, ok := mkdc["doc_count"]; ok {
+						agg.KeyCount[k.(string)] = int(cnt.(float64))
 					}
 				}
 			}
 		}
-		if len(agg.KeyCount) > 0 {
-			aggs = append(aggs, &agg)
-		}
 	}
-	return aggs, nil
+	return agg
 }
