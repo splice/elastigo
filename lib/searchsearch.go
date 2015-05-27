@@ -14,9 +14,10 @@ package elastigo
 import (
 	"encoding/json"
 	"fmt"
-	u "github.com/araddon/gou"
 	"strconv"
 	"strings"
+
+	u "github.com/araddon/gou"
 )
 
 var (
@@ -49,6 +50,12 @@ type SearchDsl struct {
 	SortBody      []*SortDsl               `json:"sort,omitempty"`
 	FilterVal     *FilterWrap              `json:"filter,omitempty"`
 	AggregatesVal map[string]*AggregateDsl `json:"aggregations,omitempty"`
+	SourceFilter  *SourceFilter            `json:"_source,omitempty"`
+}
+
+type SourceFilter struct {
+	Include []string `json:"include,omitempty"`
+	Exclude []string `json:"exclude,omitempty"`
 }
 
 func (s *SearchDsl) Bytes(conn *Conn) ([]byte, error) {
