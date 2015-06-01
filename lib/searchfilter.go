@@ -119,6 +119,58 @@ func (f *FilterWrap) MarshalJSON() ([]byte, error) {
 
 */
 
+// HasChildFilterOp represents a has_child filter.
+type HasChildFilterOp struct {
+	Type        string      `json:"type"`
+	MinChildren int         `json:"min_children,omitempty"`
+	MaxChildren int         `json:"max_children,omitempty"`
+	Filters     *FilterWrap `json:"filter,omitempty"`
+}
+
+// Filter adds the provided filters to the has_child condition.
+func (hc *HasChildFilterOp) Filter(fs ...interface{}) *HasChildFilterOp {
+	if hc.Filters == nil {
+		hc.Filters = NewFilterWrap()
+	}
+	hc.Filters.addFilters(fs)
+	return hc
+}
+
+// HasChild creates a has_child filter.
+func HasChild(docType string, min, max int) *FilterOp {
+	return &FilterOp{
+		HasChild: &HasChildFilterOp{
+			Type:        docType,
+			MinChildren: min,
+			MaxChildren: max,
+		},
+	}
+}
+
+// HasParentFilterOp represents a has_parent filter.
+type HasParentFilterOp struct {
+	Type    string      `json:"type"`
+	Filters *FilterWrap `json:"filter,omitempty"`
+}
+
+// Filter adds the provided filters to the has_parent condition.
+func (hp *HasParentFilterOp) Filter(fs ...interface{}) *HasParentFilterOp {
+	if hp.Filters == nil {
+		hp.Filters = NewFilterWrap()
+	}
+	hp.Filters.addFilters(fs)
+	return hp
+}
+
+// HasParent creates a has_parent filter.
+func HasParent(docType string) *FilterOp {
+	return &FilterOp{
+		HasParent: &HasParentFilterOp{
+			Type: docType,
+		},
+	}
+}
+
 // Filter Operation
 //
 //   Filter().Term("user","kimchy")
@@ -168,8 +220,11 @@ type FilterOp struct {
 	Exist      map[string]string                 `json:"exists,omitempty"`
 	MissingVal map[string]string                 `json:"missing,omitempty"`
 	Bool       *BoolFilterOp                     `json:"bool,omitempty"`
+	HasChild   *HasChildFilterOp                 `json:"has_child,omitempty"`
+	HasParent  *HasParentFilterOp                `json:"has_parent,omitempty"`
 }
 
+// Bool creates a bool filter.
 func Bool(minMatch int, boost float64) *FilterOp {
 	return &FilterOp{Bool: &BoolFilterOp{
 		MinShouldMatch: minMatch,
