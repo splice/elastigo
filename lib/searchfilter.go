@@ -121,19 +121,18 @@ func (f *FilterWrap) MarshalJSON() ([]byte, error) {
 
 // HasChildFilterOp represents a has_child filter.
 type HasChildFilterOp struct {
-	Type        string `json:"type"`
-	MinChildren int    `json:"min_children,omitempty"`
-	MaxChildren int    `json:"max_children,omitempty"`
-
-	filters *FilterWrap
+	Type        string      `json:"type"`
+	MinChildren int         `json:"min_children,omitempty"`
+	MaxChildren int         `json:"max_children,omitempty"`
+	Filters     *FilterWrap `json:"filter,omitempty"`
 }
 
 // Filter adds the provided filters to the has_child condition.
 func (hc *HasChildFilterOp) Filter(fs ...interface{}) *HasChildFilterOp {
-	if hc.filters == nil {
-		hc.filters = NewFilterWrap()
+	if hc.Filters == nil {
+		hc.Filters = NewFilterWrap()
 	}
-	hc.filters.addFilters(fs)
+	hc.Filters.addFilters(fs)
 	return hc
 }
 
@@ -150,17 +149,16 @@ func HasChild(docType string, min, max int) *FilterOp {
 
 // HasParentFilterOp represents a has_parent filter.
 type HasParentFilterOp struct {
-	Type string `json:"type"`
-
-	filters *FilterWrap
+	Type    string      `json:"type"`
+	Filters *FilterWrap `json:"filter,omitempty"`
 }
 
 // Filter adds the provided filters to the has_parent condition.
 func (hp *HasParentFilterOp) Filter(fs ...interface{}) *HasParentFilterOp {
-	if hp.filters == nil {
-		hp.filters = NewFilterWrap()
+	if hp.Filters == nil {
+		hp.Filters = NewFilterWrap()
 	}
-	hp.filters.addFilters(fs)
+	hp.Filters.addFilters(fs)
 	return hp
 }
 
