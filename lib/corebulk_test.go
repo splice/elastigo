@@ -81,7 +81,7 @@ func TestBulkIndexerBasic(t *testing.T) {
 		"date": "yesterday",
 	}
 
-	if err := indexer.Index(testIndex, "user", "1", "", "", &date, data, true); err != nil {
+	if err := indexer.Index(testIndex, "user", "1", "", "", &date, data); err != nil {
 		t.Fatal(err)
 	}
 
@@ -94,10 +94,10 @@ func TestBulkIndexerBasic(t *testing.T) {
 	//totalBytesSent = totalBytesSent - len(*eshost)
 	assert.T(t, len(buffers) == 1, fmt.Sprintf("Should have sent one operation but was %d", len(buffers)))
 	assert.T(t, indexer.NumErrors() == 0, fmt.Sprintf("Should not have any errors. NumErrors: %v", indexer.NumErrors()))
-	expectedBytes := 144
+	expectedBytes := 129
 	assert.T(t, totalBytesSent == expectedBytes, fmt.Sprintf("Should have sent %v bytes but was %v", expectedBytes, totalBytesSent))
 
-	if err := indexer.Index(testIndex, "user", "2", "", "", nil, data, true); err != nil {
+	if err := indexer.Index(testIndex, "user", "2", "", "", nil, data); err != nil {
 		t.Fatal(err)
 	}
 	<-time.After(time.Millisecond * 10) // we need to wait for doc to hit send channel
@@ -108,7 +108,7 @@ func TestBulkIndexerBasic(t *testing.T) {
 	assert.T(t, len(buffers) == 2, fmt.Sprintf("Should have another buffer ct=%d", len(buffers)))
 
 	assert.T(t, indexer.NumErrors() == 0, fmt.Sprintf("Should not have any errors %d", indexer.NumErrors()))
-	expectedBytes = 250 // with refresh
+	expectedBytes = 220 // with refresh
 	assert.T(t, closeInt(totalBytesSent, expectedBytes), fmt.Sprintf("Should have sent %v bytes but was %v", expectedBytes, totalBytesSent))
 }
 
@@ -146,7 +146,7 @@ func XXXTestBulkUpdate(t *testing.T) {
 	data := map[string]interface{}{
 		"script": "ctx._source.count += 2",
 	}
-	if err := indexer.Update("users", "user", "5", "", "", &date, data, true); err != nil {
+	if err := indexer.Update("users", "user", "5", "", "", &date, data); err != nil {
 		t.Fatal(err)
 	}
 	// So here's the deal. Flushing does seem to work, you just have to give the
@@ -196,9 +196,9 @@ func TestBulkSmallBatch(t *testing.T) {
 	indexer.Start()
 	<-time.After(time.Millisecond * 20)
 
-	indexer.Index("users", "user", "2", "", "", &date, data, true)
-	indexer.Index("users", "user", "3", "", "", &date, data, true)
-	indexer.Index("users", "user", "4", "", "", &date, data, true)
+	indexer.Index("users", "user", "2", "", "", &date, data)
+	indexer.Index("users", "user", "3", "", "", &date, data)
+	indexer.Index("users", "user", "4", "", "", &date, data)
 	<-time.After(time.Millisecond * 200)
 	//	indexer.Flush()
 	if err := indexer.Stop(); err != nil {
@@ -222,7 +222,7 @@ func TestBulkDelete(t *testing.T) {
 
 	indexer.Start()
 
-	indexer.Delete("fake", "fake_type", "1", true)
+	indexer.Delete("fake", "fake_type", "1")
 
 	indexer.Flush()
 	if err := indexer.Stop(); err != nil {
@@ -231,7 +231,7 @@ func TestBulkDelete(t *testing.T) {
 
 	sent := string(sentBytes)
 
-	expected := `{"delete":{"_index":"fake","_type":"fake_type","_id":"1","refresh":true}}
+	expected := `{"delete":{"_index":"fake","_type":"fake_type","_id":"1"}}
 `
 	asExpected := sent == expected
 	assert.T(t, asExpected, fmt.Sprintf("Should have sent '%s' but actually sent '%s'", expected, sent))
@@ -247,7 +247,7 @@ func TestBulkErrors(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		date := time.Unix(1257894000, 0)
 		data := map[string]interface{}{"name": "smurfs", "age": 22, "date": date}
-		indexer.Index("users", "user", strconv.Itoa(i), "", "", &date, data, true)
+		indexer.Index("users", "user", strconv.Itoa(i), "", "", &date, data)
 	}
 	err := indexer.Stop()
 	assert.NotEqual(t, nil, err, fmt.Sprintf("error should not be nil"))
@@ -279,7 +279,7 @@ func BenchmarkSend(b *testing.B) {
 		about := make([]byte, 1000)
 		rand.Read(about)
 		data := map[string]interface{}{"name": "smurfs", "age": 22, "date": time.Unix(1257894000, 0), "about": about}
-		indexer.Index("users", "user", strconv.Itoa(i), "", "", nil, data, true)
+		indexer.Index("users", "user", strconv.Itoa(i), "", "", nil, data)
 	}
 	log.Printf("Sent %d messages in %d sets totaling %d bytes \n", b.N, sets, totalBytes)
 	if indexer.NumErrors() != 0 {
@@ -313,7 +313,7 @@ func BenchmarkSendBytes(b *testing.B) {
 		return indexer.Send(buf)
 	}
 	for i := 0; i < b.N; i++ {
-		indexer.Index("users", "user", strconv.Itoa(i), "", "", nil, body, true)
+		indexer.Index("users", "user", strconv.Itoa(i), "", "", nil, body)
 	}
 	log.Printf("Sent %d messages in %d sets totaling %d bytes \n", b.N, sets, totalBytes)
 	if indexer.NumErrors() != 0 {

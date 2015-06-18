@@ -25,7 +25,7 @@ func ExampleBulkIndexer_simple() {
 
 	indexer := c.NewBulkIndexerRetry(10, 60)
 	indexer.Start()
-	indexer.Index("twitter", "user", "1", "", "", nil, `{"name":"bob"}`, true)
+	indexer.Index("twitter", "user", "1", "", "", nil, `{"name":"bob"}`)
 	if err := indexer.Stop(); err != nil {
 		// handle error
 	}
@@ -48,7 +48,7 @@ func ExampleBulkIndexer_responses() {
 	}
 	indexer.Start()
 	for i := 0; i < 20; i++ {
-		indexer.Index("twitter", "user", strconv.Itoa(i), "", "", nil, `{"name":"bob"}`, true)
+		indexer.Index("twitter", "user", strconv.Itoa(i), "", "", nil, `{"name":"bob"}`)
 	}
 	if err := indexer.Stop(); err != nil {
 		// handle error

@@ -338,9 +338,9 @@ func (b *BulkIndexer) shutdown() {
 // The index bulk API adds or updates a typed JSON document to a specific index, making it searchable.
 // it operates by buffering requests, and ocassionally flushing to elasticsearch
 // http://www.elasticsearch.org/guide/reference/api/bulk.html
-func (b *BulkIndexer) Index(index, _type, id, parent, ttl string, date *time.Time, data interface{}, refresh bool) error {
+func (b *BulkIndexer) Index(index, _type, id, parent, ttl string, date *time.Time, data interface{}) error {
 	//{ "index" : { "_index" : "test", "_type" : "type1", "_id" : "1", "parent" : "london" } }
-	by, err := WriteBulkBytes("index", index, _type, id, parent, ttl, date, data, refresh)
+	by, err := WriteBulkBytes("index", index, _type, id, parent, ttl, date, data)
 	if err != nil {
 		return err
 	}
@@ -348,9 +348,9 @@ func (b *BulkIndexer) Index(index, _type, id, parent, ttl string, date *time.Tim
 	return nil
 }
 
-func (b *BulkIndexer) Update(index, _type, id, parent, ttl string, date *time.Time, data interface{}, refresh bool) error {
+func (b *BulkIndexer) Update(index, _type, id, parent, ttl string, date *time.Time, data interface{}) error {
 	//{ "index" : { "_index" : "test", "_type" : "type1", "_id" : "1", "parent" : "london" } }
-	by, err := WriteBulkBytes("update", index, _type, id, parent, ttl, date, data, refresh)
+	by, err := WriteBulkBytes("update", index, _type, id, parent, ttl, date, data)
 	if err != nil {
 		return err
 	}
@@ -358,20 +358,20 @@ func (b *BulkIndexer) Update(index, _type, id, parent, ttl string, date *time.Ti
 	return nil
 }
 
-func (b *BulkIndexer) Delete(index, _type, id string, refresh bool) {
-	queryLine := fmt.Sprintf("{\"delete\":{\"_index\":%q,\"_type\":%q,\"_id\":%q,\"refresh\":%t}}\n", index, _type, id, refresh)
+func (b *BulkIndexer) Delete(index, _type, id string) {
+	queryLine := fmt.Sprintf("{\"delete\":{\"_index\":%q,\"_type\":%q,\"_id\":%q}}\n", index, _type, id)
 	b.bulkChannel <- []byte(queryLine)
 	return
 }
 
-func (b *BulkIndexer) UpdateWithPartialDoc(index, _type, id, parent, ttl string, date *time.Time, partialDoc interface{}, upsert, refresh bool) error {
+func (b *BulkIndexer) UpdateWithPartialDoc(index, _type, id, parent, ttl string, date *time.Time, partialDoc interface{}, upsert bool) error {
 	var data map[string]interface{} = make(map[string]interface{})
 
 	data["doc"] = partialDoc
 	if upsert {
 		data["doc_as_upsert"] = true
 	}
-	return b.Update(index, _type, id, parent, ttl, date, data, refresh)
+	return b.Update(index, _type, id, parent, ttl, date, data)
 }
 
 type responseStruct struct {
@@ -433,7 +433,7 @@ func errorFromBulkResponse(res responseStruct) ErrList {
 
 // Given a set of arguments for index, type, id, data create a set of bytes that is formatted for bulkd index
 // http://www.elasticsearch.org/guide/reference/api/bulk.html
-func WriteBulkBytes(op, index, _type, id, parent, ttl string, date *time.Time, data interface{}, refresh bool) ([]byte, error) {
+func WriteBulkBytes(op, index, _type, id, parent, ttl string, date *time.Time, data interface{}) ([]byte, error) {
 	// only index and update are currently supported
 	if op != "index" && op != "update" {
 		return nil, errors.New(fmt.Sprintf("Operation '%s' is not yet supported", op))
@@ -471,9 +471,6 @@ func WriteBulkBytes(op, index, _type, id, parent, ttl string, date *time.Time, d
 		buf.WriteString(`,"_timestamp":"`)
 		buf.WriteString(strconv.FormatInt(date.UnixNano()/1e6, 10))
 		buf.WriteString(`"`)
-	}
-	if refresh {
-		buf.WriteString(`,"refresh":true`)
 	}
 	buf.WriteString(`}}`)
 	buf.WriteRune('\n')
