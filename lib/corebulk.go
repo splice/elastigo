@@ -23,15 +23,16 @@ import (
 	"time"
 )
 
-const (
+// maximum wait shutdown seconds
+const MAX_SHUTDOWN_SECS = 5
+
+var (
 	// Max buffer size in bytes before flushing to elasticsearch
 	BulkMaxBuffer = 16384
 	// Max number of Docs to hold in buffer before forcing flush
 	BulkMaxDocs = 100
 	// Max delay before forcing a flush to Elasticearch
 	BulkDelaySeconds = 5
-	// maximum wait shutdown seconds
-	MAX_SHUTDOWN_SECS = 5
 )
 
 // ErrList is a list of errors that implement the error interface.
