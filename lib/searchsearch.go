@@ -206,3 +206,12 @@ func (s *SearchDsl) SearchType(searchType string) *SearchDsl {
 	s.args["search_type"] = searchType
 	return s
 }
+
+// AddQueryParam adds a custom query parameter to the search request.
+func (s *SearchDsl) AddQueryParam(name string, value interface{}) *SearchDsl {
+	// s.args is transformed into the query string for the request
+	// URL.
+	s.args[name] = value
+
+	return s
+}
