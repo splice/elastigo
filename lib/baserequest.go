@@ -19,6 +19,9 @@ import (
 	"time"
 )
 
+// LogFunc is the function to call to log information. Defaults to a no-op.
+var LogFunc = func(f string, args ...interface{}) {}
+
 func (c *Conn) DoCommand(method string, url string, args map[string]interface{}, data interface{}) ([]byte, error) {
 	var response map[string]interface{}
 	var body []byte
@@ -32,7 +35,7 @@ func (c *Conn) DoCommand(method string, url string, args map[string]interface{},
 	if err != nil {
 		return body, err
 	}
-	//fmt.Printf("elastigo.DoCommand: %s %s\n", method, req.URL)
+	//fmt.Printf("elastigo.DoCommand: %s %s (wanted %v)\n", method, req.URL, args)
 
 	if data != nil {
 		switch v := data.(type) {
