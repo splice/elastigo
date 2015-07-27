@@ -37,7 +37,11 @@ func (r *Request) SetBodyJson(data interface{}) error {
 		return err
 	}
 	r.SetBodyBytes(body)
-	LogFunc(`{"method": %q, "url": %q, "body": %s}`, r.Request.Method, r.Request.URL, string(body))
+
+	// only interested in queries, not in indexing of documents
+	if r.Request != nil && r.Request.URL != nil && strings.HasSuffix(r.Request.URL.Path, "_search") {
+		LogFunc(`{"method": %q, "url": %q, "body": %s}`, r.Request.Method, r.Request.URL, string(body))
+	}
 	//fmt.Printf("elastigo: body size: %d\nbody:\n%s\n", len(body), string(body))
 	r.Header.Set("Content-Type", "application/json")
 	return nil
